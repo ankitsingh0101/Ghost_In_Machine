@@ -73,6 +73,7 @@ One model, one set of local data, two opposite moods: **faithful** on the altar,
 | **Add a Memory** | Write a story (and optionally attach a photo). Gemma creates the title, summary and tags. Gemma's vision describes the photo. |
 | **Time Travel** | Fast-forward 0 to 60 days to watch candles dim in real time. Built for demos. |
 | **Haunted Mode** | Full-screen CRT terminal with a haunting slider (0 to 100), glitch effects, whispers, and a Gemma-powered entity. |
+| **Horror soundscape** | Generated in code (no audio files): dissonant drone, rising whine, wind, a heartbeat that speeds up, random whispers, creaks and a detuned music box, plus a crash stinger. Starts muted. Click **Muted** to turn it on. |
 | **Terminal commands** | `help`, `whoami`, `memory`, `clear` (refused), `exit` |
 | **Safe delete** | Removing a candle asks for confirmation first. |
 | **Export Ofrenda** | Download the altar as a single self-contained, offline HTML file. |
@@ -121,7 +122,8 @@ flowchart LR
 | **Domain logic** | Decay maths and shared types | `src/utils/memoryMath.ts`, `src/types.ts` |
 | **AI service** | Prompts, Ollama calls, grounding rules, fallback | `src/services/ai.ts` |
 | **Persistence** | Browser storage only | `localStorage` (no database, no server) |
-| **Export** | Builds the offline HTML ofrenda | `src/utils/exportOfrenda.ts` |
+| **Export** | Builds the offline HTML ofrenda | `src/utils/horrorAudio.ts` | The procedural horror sound engine (WebAudio): layered drone, whine, wind, heartbeat, whispers, creaks, music box and crash stinger, all scaled by the haunting level. | Keeps audio code out of the terminal component, and it is testable offline. |
+| `src/utils/exportOfrenda.ts` |
 
 ### Why no backend?
 
@@ -290,6 +292,7 @@ candlekeeper/
     │   └── ai.ts
     ├── utils/
     │   ├── memoryMath.ts
+    │   ├── horrorAudio.ts
     │   └── exportOfrenda.ts
     ├── data/
     │   └── seedMemories.ts
@@ -387,7 +390,7 @@ All animations respect `prefers-reduced-motion`.
 | **Ollama** | Local model server | One command to run open models, with a simple HTTP API. |
 | **Gemma** | Language and vision model | Open weights, runs on a laptop, handles text and images. |
 | **localStorage** | Persistence | No backend, so no data leaves the device. |
-| **WebAudio API** | Haunted drone and glitch sounds | Generated in code, so no audio files are needed. |
+| **WebAudio API** | Horror soundscape | Drone, whine, wind, heartbeat, whispers, creaks and a music box are all synthesised in `src/utils/horrorAudio.ts`, so there are no audio files or licensing issues. |
 
 Everything is **bundled locally**: no CDN, no remote fonts, no remote images. That is what makes the **Wi-Fi-off** demo work.
 
@@ -470,7 +473,7 @@ Open **http://localhost:3000**, go to **Settings**, and press **Test connection*
 - Respects **`prefers-reduced-motion`**, and Haunted Mode has a **Gentle** toggle.
 - Keyboard navigation, `aria` labels and focus rings on dialogs and controls.
 - High-contrast terminal text that stays readable even at high haunting levels.
-- Sound is **muted by default** and has a mute button.
+- Sound is **muted by default**, has a mute button, and is softened in Gentle mode (no creaks or stinger).
 
 ---
 

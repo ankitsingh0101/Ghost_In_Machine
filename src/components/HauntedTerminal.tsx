@@ -1,3 +1,4 @@
+import { HorrorAudio } from '../utils/horrorAudio';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Volume2, VolumeX, ShieldCheck, X } from 'lucide-react';
 import { Memory } from '../types';
@@ -346,9 +347,7 @@ export const HauntedTerminal: React.FC<HauntedTerminalProps> = ({
   });
 
   // WebAudio synthesis refs
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const droneGainRef = useRef<GainNode | null>(null);
-  const oscBRef = useRef<OscillatorNode | null>(null);
+  const audioRef = useRef<HorrorAudio | null>(null);
 
   useEffect(() => {
     isTypingRef.current = isTyping;
@@ -386,115 +385,44 @@ export const HauntedTerminal: React.FC<HauntedTerminalProps> = ({
      WEBAUDIO GENERATOR (LOW DRONE + GLITCH BURSTS, ZERO EXTERNAL FILES)
      ========================================================================== */
   const ensureAudioContext = useCallback(() => {
-    if (audioCtxRef.current) return audioCtxRef.current;
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return null;
-
-    const ctx = new AudioCtx();
-    const gain = ctx.createGain();
-    gain.gain.value = 0.0001;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 130;
-
-    const oscA = ctx.createOscillator();
-    const oscB = ctx.createOscillator();
-    oscA.type = 'sine';
-    oscB.type = 'triangle';
-    oscA.frequency.value = 53;
-    oscB.frequency.value = 55.6;
-
-    oscA.connect(filter);
-    oscB.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-
-    oscA.start();
-    oscB.start();
-
-    audioCtxRef.current = ctx;
-    droneGainRef.current = gain;
-    oscBRef.current = oscB;
-    return ctx;
+    if (audioRef.current) return audioRef.current;
+    try {
+      audioRef.current = new HorrorAudio();
+    } catch {
+      return null; // WebAudio unsupported: the terminal simply stays silent
+    }
+    return audioRef.current;
   }, []);
 
   const playGlitchSound = useCallback(
     (intensity = 0.5) => {
-      if (audioMuted || gentleMode || !audioCtxRef.current) return;
-      const ctx = audioCtxRef.current;
-      const now = ctx.currentTime;
-      const dur = 0.08 + intensity * 0.14;
-      const bufSize = Math.floor(ctx.sampleRate * dur);
-      const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-      const channel = buffer.getChannelData(0);
-      for (let i = 0; i < bufSize; i++) {
-        channel[i] = (Math.random() * 2 - 1) * (i % 6 === 0 ? 0.9 : 0.22);
-      }
-
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
-
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 320 + Math.random() * 880;
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.018 + intensity * 0.03, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-
-      src.connect(bp);
-      bp.connect(gain);
-      gain.connect(ctx.destination);
-      src.start(now);
+      if (audioMuted || !audioRef.current) return;
+      audioRef.current.glitch(intensity);
     },
-    [audioMuted, gentleMode]
+    [audioMuted]
   );
 
   const playKeyTick = useCallback(() => {
-    if (audioMuted || !audioCtxRef.current) return;
-    const ctx = audioCtxRef.current;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(590 + Math.random() * 170, now);
-    gain.gain.setValueAtTime(0.006, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.022);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.025);
+    if (audioMuted || !audioRef.current) return;
+    audioRef.current.keyTick();
   }, [audioMuted]);
 
-  // Sync WebAudio drone gain with mute state and hauntingLevel
+  // Keep the soundscape in sync with mute, gentle mode and the haunting level
   useEffect(() => {
-    const ctx = audioCtxRef.current;
-    const gain = droneGainRef.current;
-    if (!ctx || !gain) return;
-    const now = ctx.currentTime;
-    if (audioMuted) {
-      gain.gain.setTargetAtTime(0.0001, now, 0.2);
-    } else {
-      const target = 0.018 + (hauntingLevel / 100) * 0.05;
-      gain.gain.setTargetAtTime(target, now, 0.35);
-      if (oscBRef.current) {
-        oscBRef.current.frequency.setTargetAtTime(55.4 + (hauntingLevel / 100) * 3.4, now, 0.4);
-      }
-    }
-  }, [audioMuted, hauntingLevel]);
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.setGentle(gentleMode);
+    audio.setLevel(hauntingLevel);
+    audio.setMuted(audioMuted);
+  }, [audioMuted, hauntingLevel, gentleMode]);
 
   // Cleanup audio on unmount
   useEffect(() => {
     unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-      }
+      audioRef.current?.dispose();
+      audioRef.current = null;
     };
   }, []);
 
@@ -569,6 +497,7 @@ export const HauntedTerminal: React.FC<HauntedTerminalProps> = ({
     setFxShakeRgb(true);
     setFxFlicker(true);
     playGlitchSound(1.0);
+    if (!audioMuted) audioRef.current?.stinger();
 
     await new Promise((r) => setTimeout(r, 680));
     if (unmountedRef.current) return;
@@ -630,7 +559,7 @@ export const HauntedTerminal: React.FC<HauntedTerminalProps> = ({
       : 'You watched the screen go black and waited for me to come back. Everything you typed is still here.';
 
     await typewriterAppend(postRebootMessage, true);
-  }, [history.length, memories, playGlitchSound, playKeyTick, typewriterAppend]);
+  }, [history.length, memories, audioMuted, playGlitchSound, playKeyTick, typewriterAppend]);
 
   // Initial welcome greeting (comments on after-midnight hour or returning localStorage history)
   const greetedRef = useRef(false);
@@ -866,10 +795,8 @@ export const HauntedTerminal: React.FC<HauntedTerminalProps> = ({
 
   const handleToggleAudio = () => {
     markActive();
-    const ctx = ensureAudioContext();
-    if (ctx && ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
-    }
+    const audio = ensureAudioContext();
+    audio?.resume();
     setAudioMuted((prev) => !prev);
   };
 
